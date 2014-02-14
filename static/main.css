@@ -6,7 +6,7 @@ body {
 a {
 	text-decoration: none;
 }
-.content {
+.main {
 	font-size: 20px;
 	font-weight: bold;
 	padding: 10px;
@@ -22,7 +22,10 @@ a {
 	font-size: 40px;
 	font-weight: bold;
 	padding: 10px;
-	margin-bottom: 30px;
+}
+
+.subheading {
+	
 }
 
 .error {

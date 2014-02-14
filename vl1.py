@@ -10,15 +10,18 @@ import string
 from time import sleep
 from google.appengine.ext import ndb
 
-# TEMPLATE STUFF
+# --- TEMPLATES ---
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA_ENVIRONMENT = jinja2.Environment(
 	loader=jinja2.FileSystemLoader(template_dir),
 	extensions=['jinja2.ext.autoescape'],
 	autoescape=True)
 
+class TemplateHandler(webapp2.RequestHandler):
+	def template(self, template, **params): 
+		return self.response.write(JINJA_ENVIRONMENT.get_template(template).render(**params))
 
-# USER STUFF
+# --- USER STUFF ---
 def hash_str(s):
 	return hmac.new(SECRET, s).hexdigest()
 
@@ -43,31 +46,7 @@ def valid_pw(name, password, h):
 	salt = h.split(',')[0]
 	return h == make_pw_hash(name, password, salt)
 
-class User(ndb.Model):
-	username = ndb.StringProperty(required=True)
-	pw_hash = ndb.StringProperty(required=True)
-	email = ndb.StringProperty(required=True)
-	created = ndb.DateTimeProperty(auto_now_add=True)
-	logged_in = ndb.BooleanProperty(default=True)
-	verified_email = ndb.BooleanProperty(default=False)
-	admin = ndb.BooleanProperty(default=False)
-	dead = ndb.BooleanProperty(default=False)
-
-# BLOG STUFF
-class Post(ndb.Model):
-	author = ndb.StringProperty()
-	subject = ndb.StringProperty(required = True)
-	content = ndb.TextProperty(required = True)
-	created = ndb.DateTimeProperty(auto_now_add = True)
-	last_modified = ndb.DateTimeProperty(auto_now = True)
-	last_modified_by = ndb.StringProperty()
-	slug = ndb.TextProperty()
-
-# URI HANDLERS
-class MainHandler(webapp2.RequestHandler): # this is run with EVERY page request
-	def template(self, template, **params): # get, write and render template
-		return self.response.write(JINJA_ENVIRONMENT.get_template(template).render(**params))
-
+class UserHandler(TemplateHandler): 
 	def set_secure_cookie(self, name, val):
 		cookie_val = make_secure_val(val)
 		self.response.headers.add_header(
@@ -78,23 +57,41 @@ class MainHandler(webapp2.RequestHandler): # this is run with EVERY page request
 		cookie_val = self.request.cookies.get(name)
 		return cookie_val and check_secure_val(cookie_val)
 
-	def login(self, user): # call this to log in a user
+	def login(self, user):
 		self.set_secure_cookie('user_id', str(user.key().id()))
 
-	def logout(self): # call this to log out a user
+	def logout(self):
 		self.response.headers.add_header('Set-Cookie', 'user_id=; Path=/')
 
-	def initialize(self, *a, **kw): # runs automatically in GAE. 
-		# self.user is True if User has valid cookie and exists in datastore
+	# initialize() is a special method on the RequestHandler class. It runs automatically, first.
+	def initialize(self, *a, **kw): # self.user is True if User has valid cookie and exists in datastore
 		webapp2.RequestHandler.initialize(self, *a, **kw)
 		uid = self.read_secure_cookie('user_id')
 		self.user = uid and User.get_by_id(int(uid)) 
 
-class Frontpage(MainHandler):
-	def get(self):
-		self.template('home.html')
+class User(ndb.Model):
+	username = ndb.StringProperty(required=True)
+	pw_hash = ndb.StringProperty(required=True)
+	email = ndb.StringProperty(required=True)
+	created = ndb.DateTimeProperty(auto_now_add=True)
+	logged_in = ndb.BooleanProperty(default=True)
+	verified_email = ndb.BooleanProperty(default=False)
+	admin = ndb.BooleanProperty(default=False)
+	dead = ndb.BooleanProperty(default=False)
 
-class Signup(MainHandler):
+USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+def valid_username(username):
+	return username and USER_RE.match(username)
+
+PASS_RE = re.compile(r"^.{3,20}$")
+def valid_password(password):
+	return password and PASS_RE.match(password)
+
+EMAIL_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
+def valid_email(email):
+	return not email or EMAIL_RE.match(email)
+
+class Signup(UserHandler):
 	def get(self):
 		self.template('signup.html')
 
@@ -126,7 +123,7 @@ class Signup(MainHandler):
 		else:
 			self.template('signup.html', other_error="Not implemented yet. Userdata has not been stored.")
 
-class UserHome(MainHandler):
+class UserHome(UserHandler):
 	def get(self):	
 		if self.read_secure_cookie('user_id'):
 			# get user id out of cookie, load associated userdata, pass it into template
@@ -135,7 +132,7 @@ class UserHome(MainHandler):
 		else:
 			self.redirect('/login')
 
-class Login(MainHandler):
+class Login(UserHandler):
 	def get(self):
 		self.template('login.html')
 
@@ -143,34 +140,61 @@ class Login(MainHandler):
 		username = self.request.get('username')
 		password = self.request.get('password')
 
-		self.template('login.html', other_error="Not implemented yet.")
+		self.template('login.html', other_error="Not implemented yet.", username=username)
 
-class Blog(MainHandler):
+# --- FRONTPAGE ---
+class Frontpage(UserHandler):
 	def get(self):
-		self.template('blog.html')
+		self.template('home.html')
 
-class Board(MainHandler):
+# --- BLOG ---
+class Post(ndb.Model):
+	author = ndb.StringProperty()
+	subject = ndb.StringProperty(required = True)
+	content = ndb.TextProperty(required = True)
+	created = ndb.DateTimeProperty(auto_now_add = True)
+	last_modified = ndb.DateTimeProperty(auto_now = True)
+	last_modified_by = ndb.StringProperty()
+	slug = ndb.TextProperty()
+
+	def render_post(self): # gets called from templates
+		return JINJA_ENVIRONMENT.get_template('post.html').render(p=self) 
+
+class Blog(UserHandler):
+	def get(self):
+		display = 5 
+		self.template('blog.html') # pass in the 5 most recent ndb objects as 'posts'
+
+class NewPost(UserHandler):
+	def get(self):
+		self.template('newpost.html')
+
+	def post(self):
+		subject = self.request.get('subject')
+		post = self.request.get('post')
+		slug = self.request.get('slug')
+
+		if subject and content and slug:
+			self.template('newpost.html', error="Not implemented yet. Data lost.")
+		else:
+			self.template('newpost.html', error="Subject, Post and Slug please.", subject=subject, content=content, slug=slug)
+
+class Permalink(UserHandler):
+	def get(self): # pass in slug
+		self.template('permalink.html') # pass in ndb object as 'post'
+
+# --- BOARD ---
+class Board(UserHandler):
 	def get(self):
 		self.template('board.html')
 
-# Validation Regex
-USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-def valid_username(username):
-	return username and USER_RE.match(username)
-
-PASS_RE = re.compile(r"^.{3,20}$")
-def valid_password(password):
-	return password and PASS_RE.match(password)
-
-EMAIL_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
-def valid_email(email):
-	return not email or EMAIL_RE.match(email)
-
+# --- ROUTING ---
 application = webapp2.WSGIApplication([
 	('/', Frontpage),
 	('/signup', Signup),
 	('/userhome', UserHome),
 	('/login', Login),
 	('/blog', Blog),
+	('/blog/newpost', NewPost),
 	('/board', Board),
 ], debug=True)

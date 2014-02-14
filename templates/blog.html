@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-		<div class="content">
-			Blog.
-		</div>
+<div class="main">
+	<div class="subheading"><h2>Blog</h2></div>
+
+	{% for p in posts %} 
+	{{ p.render_post() | safe }}
+	{% endfor %}
+
+	<a href="/blog/newpost">New Post</a>
+
+</div>
 {% endblock %}

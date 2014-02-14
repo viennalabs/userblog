@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="main">
+	<div class="subheading"><h2>New Post</h2></div>
+
+	<form method="post">
+		<table>
+			<tr>
+				<label>
+					<div class="newpost-text">Subject</div>
+					<input type="text" name="subject" value="{{ subject }}">
+				</label>
+			</tr>
+			<tr>
+				<label>
+					<div class="newpost-textarea">Post</div>
+					<textarea name="content">{{ content }}</textarea>
+				</label>
+			</tr>
+			<tr>
+				<label>
+					<div class="newpost-text">Slug</div>
+					<input type="text" name="slug" value={{ slug }}>
+				</label>
+			</tr>
+			<tr>
+				<div><input type="submit" value="Post to Blog"><div>
+			</tr>
+		</table>
+	</form>
+
+	<p class="error">{{ error }}</p>
+</div>
+{% endblock %}
