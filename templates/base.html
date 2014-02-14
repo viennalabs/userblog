@@ -1,0 +1,36 @@
+<DOCTYPE html>
+	{% autoescape true %}
+	<html>
+	<head>
+		<title>App Engine</title>
+		<link rel="stylesheet" type="text/css" href="/static/main.css" />
+	</head>
+
+	<body>
+		<a href="/"><h1 class="main-title">App Engine</h1></a>
+
+		{% block content %}
+		{% endblock %}
+
+		<div class="footer">
+			<span>Go to: </span>
+			<span>
+				<a href="/signup">Signup</a>
+			</span>		
+			<span>
+				<a href="/login">Login</a>
+			</span>				
+			<span>
+				<a href="/blog">Blog</a>
+			</span>
+			<span>
+				<a href="/board">Board</a>
+			</span>
+			<span class="credits">
+				Made with love by Viennalabs 2014.
+			</span>
+		</div>
+
+	</body>
+	</html>
+	{% endautoescape %}
