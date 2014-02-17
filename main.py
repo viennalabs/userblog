@@ -5,6 +5,8 @@ import jinja2
 from google.appengine.ext import ndb
 from google.appengine.api import memcache
 
+import json
+
 import logging
 
 import utils
@@ -18,7 +20,7 @@ JINJA_ENVIRONMENT = jinja2.Environment(
 
 class TemplateHandler(utils.MainHandler):
 	def template(self, template, **params): 
-		params['user'] = self.user # this passeds self.user into every template
+		params['user'] = self.user # pass self.user into every template
 		return self.response.write(JINJA_ENVIRONMENT.get_template(template).render(**params))
 
 	def initialize(self, *a, **kw):
@@ -28,8 +30,7 @@ class TemplateHandler(utils.MainHandler):
 			logging.error("ID FROM COOKIE: " + str(uid))
 		self.user = uid and User.get_by_id(int(uid), parent=user_key()) # None or User entity
 		if self.user:
-			logging.error("AUTHENTICATED USER. ")
-			logging.error("self.user has been set to: " + str(self.user))
+			logging.error("AUTHENTICATED USER, self.user has been set.")
 		elif uid:
 			logging.error("VALID COOKIE FOUND BUT ID NOT IN DATASTORE!")
 
@@ -56,7 +57,7 @@ class Post(ndb.Model):
 	last_modified_by = ndb.StringProperty()
 	slug = ndb.StringProperty()
 
-	def render_post(self): # gets called from templates on every post!
+	def render_post(self): # gets called from templates to render posts.
 		return JINJA_ENVIRONMENT.get_template('post.html').render(p=self)
 
 def blog_key(blog_name='default'):
@@ -122,13 +123,10 @@ class Logout(TemplateHandler):
 		self.redirect('/')
 
 # --- BLOG HANDLERS---
+
 class Blog(TemplateHandler):
 	def get(self):
-		display = 5 
-		query = Post.query(ancestor=blog_key())
-		ordered = query.order(-Post.created)
-		posts = ordered.fetch(display)
-
+		posts = blog_query() # hit cache or db
 		self.template('blog.html', posts=posts)
 
 class NewPost(TemplateHandler):
@@ -146,28 +144,68 @@ class NewPost(TemplateHandler):
 		if subject and content and slug:
 			p = Post(parent=blog_key(), subject=subject, content=content, slug=slug)
 			new_post_id = p.put().id()
-
-			slug = Post.get_by_id(new_post_id, parent=blog_key()).slug
-			self.redirect('/post/%s' % str(slug))
+			blog_query(update=True) # update Memcache
+			self.redirect('/post/%s' % slug)
 		else:
-			self.template('newpost.html', error="Subject and Content please.", subject=subject, content=content)
+			error = "Subject and Content please"
+			self.template('newpost.html', error=error, subject=subject, content=content)
+
 
 class Permalink(TemplateHandler):
 	def get(self, slug):
-		post = Post.query(Post.slug == slug).get()
-
+		post = post_query(slug)
 		if post:
 			self.template('permalink.html', post=post)
 		else:
 			self.redirect('/')
+		
+
+# --- MEMCACHE ---
+
+def post_query(slug):
+	post_key = "POST_%s" % slug
+	post = memcache.get(post_key)
+
+	if post is None:
+		logging.error("DB HIT!")
+		post = Post.query(Post.slug == slug).get()
+		if not post:
+			return None
+		logging.error("NEW POST WITH SLUG " + slug + " ADDED TO MEMCACHE.")
+		memcache.add(post_key, post)
+	return post
+
+def blog_query(update=False):
+	mc_key = 'POSTS'
+	posts = memcache.get(mc_key)
+
+	if posts is None or update:
+		logging.error("DB HIT!")
+		posts = Post.query(ancestor=blog_key()).order(-Post.created).fetch(5)
+		memcache.add(mc_key, posts)
+	return posts
+
+# --- JSON ----
+
+class BlogJSON(TemplateHandler):
+	def get(self):
+		# read out of Memcached!
+		pass
+
+class PermalinkJSON(TemplateHandler):
+	def get(self):
+		# read out of Memcached!
+		pass
 
 # --- ROUTING ---
 application = webapp2.WSGIApplication([
 	('/signup', Signup),
-	('/user/([a-zA-Z]+)', UserHome),
+	('/user/([\S]+)', UserHome),
 	('/login', Login),
 	('/logout', Logout),
-	('/?', Blog), # ? is regex for 0 or 1
+	('/', Blog),
 	('/newpost', NewPost),
 	('/post/([\S]+)', Permalink),
+	('/.json', BlogJSON),
+	('/post/([\S]+)/.json', PermalinkJSON),
 ], debug=True)

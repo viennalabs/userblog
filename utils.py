@@ -5,9 +5,9 @@ import hmac
 import re
 import random
 import string
+import logging
 
 import SECRET
-
 
 # --- REQUESTHANDLER DEPENDENCIES ---
 # note that these can be called as self.func() from any Requesthandler
@@ -48,6 +48,10 @@ def valid_pw(name, password, h): # checks login input (pass in ndb pw_hash as h)
 	salt = h.split(',')[0] # get the salt out of the ndb
 	return h == make_pw_hash(name, password, salt)
 
+# --- MEMCACHED ---
+
+
+
 # --- FORM VALIDATION ---
 USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
 def valid_username(username):
@@ -70,10 +74,6 @@ def validation(username, password, verify, email): # needs to take **kw, but can
 		return 'Passwords don\'t match.'
 	if not valid_email(email):
 		return 'That doesn\'t look like a valid Email address.'
-
-
-
-r"^([\w]?-?[/w]?)$"
 
 
 
