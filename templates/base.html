@@ -15,17 +15,23 @@
 		<div class="footer">
 			<span>Go to: </span>
 			<span>
+				{% if user %}
+				<a href="/newpost">New Post</a>
+				{% else %}
 				<a href="/signup">Signup</a>
+				{% endif %}
 			</span>		
 			<span>
+			{% if user %}
+				<a href="/logout">Logout</a>
+			{% else %}
 				<a href="/login">Login</a>
-			</span>				
+			{% endif %}
+			</span>			
 			<span>
-				<a href="/blog">Blog</a>
+				<a href="/">Blog</a>
 			</span>
-			<span>
-				<a href="/board">Board</a>
-			</span>
+		
 			<span class="credits">
 				Made with love by Viennalabs 2014.
 			</span>

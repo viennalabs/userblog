@@ -2,7 +2,16 @@
 
 {% block content %}
 <div class="main">
-	<div class="subheading"><h2>{{ userdata.username }}</h2></div>
+	<div class="subheading"><h2>Hello, {{ user.username }}!</h2></div>
+	{% if user.email %}
+	<p>Email: {{ user.email }}</p>
+	{% else %}
+	<p>
+		You have not entered an Email Addresss.
+	</p>
+	{% endif %}
+	<p>Your account was created {{ user.created.strftime("%b %d, %Y") }}</p>
+	<p>Last login: Not implemented</p>
 </div>
 {% endblock %}
 

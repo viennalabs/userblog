@@ -3,6 +3,8 @@ import webapp2
 import jinja2
 
 from google.appengine.ext import ndb
+from google.appengine.api import memcache
+
 import logging
 
 import utils
@@ -16,15 +18,15 @@ JINJA_ENVIRONMENT = jinja2.Environment(
 
 class TemplateHandler(utils.MainHandler):
 	def template(self, template, **params): 
-		params['user'] = self.user # this passeds self.user into every single template! Can't think of a better way right now.
+		params['user'] = self.user # this passeds self.user into every template
 		return self.response.write(JINJA_ENVIRONMENT.get_template(template).render(**params))
 
-	def initialize(self, *a, **kw): # self.user = users data if user has valid cookie and exists in datastore
+	def initialize(self, *a, **kw):
 		webapp2.RequestHandler.initialize(self, *a, **kw)
 		uid = self.read_secure_cookie('user_id')
 		if uid:
 			logging.error("ID FROM COOKIE: " + str(uid))
-		self.user = uid and User.get_by_id(int(uid), parent=user_key()) 
+		self.user = uid and User.get_by_id(int(uid), parent=user_key()) # None or User entity
 		if self.user:
 			logging.error("AUTHENTICATED USER. ")
 			logging.error("self.user has been set to: " + str(self.user))
@@ -48,13 +50,13 @@ def user_key(usergroup='default'):
 class Post(ndb.Model):
 	author = ndb.StringProperty()
 	subject = ndb.StringProperty(required = True)
-	content = ndb.TextProperty(required = True, indexed=False) # saves us writes which aren't needed since we never use that property in a query
+	content = ndb.TextProperty(required = True) # TextProperty is never indexed
 	created = ndb.DateTimeProperty(auto_now_add = True)
 	last_modified = ndb.DateTimeProperty(auto_now = True)
 	last_modified_by = ndb.StringProperty()
-	slug = ndb.TextProperty()
+	slug = ndb.StringProperty()
 
-	def render_post(self): # gets called from templates
+	def render_post(self): # gets called from templates on every post!
 		return JINJA_ENVIRONMENT.get_template('post.html').render(p=self)
 
 def blog_key(blog_name='default'):
@@ -79,36 +81,37 @@ class Signup(TemplateHandler):
 				error = "Sorry, this username already exists"
 				self.template('signup.html', other_error=error, username=username, email=email)
 			else:
-				h = utils.make_pw_hash(username, password) # a string of salt,hash
+				h = utils.make_pw_hash(username, password)
 				u = User(parent=user_key(), username=username, pw_hash=h, email=email)
 				new_user_id = u.put().id() # put() returns the models Key, put().id() returns the entities id
 				self.set_secure_cookie('user_id', str(new_user_id))
 				logging.error("NEW USER WITH ID " + str(new_user_id) + " CREATED")
-				self.redirect('/userhome')
+				self.redirect('/user/%s' % username)
 
 class UserHome(TemplateHandler):
-	def get(self):
-		if self.user:
+	def get(self, username):
+		if self.user and username == self.user.username:
 			self.template('userhome.html') # we do not need to pass in self.user because we've already passed it into every template!
+
 		else:
 			self.redirect('/login')
 
 class Login(TemplateHandler):
 	def get(self):
 		if self.user:
-			self.redirect("/userhome")		
+			self.redirect("/user/%s" % self.user.username)		
 		self.template('login.html')
 
 	def post(self):
 		username = self.request.get('username')
 		password = self.request.get('password')
 
-		u = User.query(User.username == username).get() # return user object or None
+		u = User.query(User.username == username).get()
 
 		if u and utils.valid_pw(username, password, u.pw_hash):
 			user_id = u.key.id()
 			self.set_secure_cookie('user_id', str(user_id))
-			self.redirect('/userhome')
+			self.redirect('/user/%s' % username)
 		else:
 			error = "Invalid login."
 			self.template('login.html', username=username, other_error=error)
@@ -118,18 +121,11 @@ class Logout(TemplateHandler):
 		self.response.headers.add_header('Set-Cookie', 'user_id=; Path=/')
 		self.redirect('/')
 
-# --- FRONTPAGE HANDLER ---
-class Frontpage(TemplateHandler):
-	def get(self):
-		self.redirect('/blog')
-
 # --- BLOG HANDLERS---
 class Blog(TemplateHandler):
 	def get(self):
 		display = 5 
-		blog_name = 'default'
-		# hit the DB
-		query = Post.query(ancestor=blog_key(blog_name))
+		query = Post.query(ancestor=blog_key())
 		ordered = query.order(-Post.created)
 		posts = ordered.fetch(display)
 
@@ -138,47 +134,40 @@ class Blog(TemplateHandler):
 class NewPost(TemplateHandler):
 	def get(self):
 		if self.user: 
-			self.template('newpost.html', error="Slug not implemented, using post id instead.")
+			self.template('newpost.html')
 		else:
 			self.redirect('/login')
 
 	def post(self):
 		subject = self.request.get('subject')
 		content = self.request.get('content')
-		slug = self.request.get('slug')
+		slug = subject.replace(" ", "-")
 
-		if subject and content:
+		if subject and content and slug:
 			p = Post(parent=blog_key(), subject=subject, content=content, slug=slug)
-			p.put()
-			self.redirect('/blog/%s' % str(p.key.id()))
+			new_post_id = p.put().id()
+
+			slug = Post.get_by_id(new_post_id, parent=blog_key()).slug
+			self.redirect('/post/%s' % str(slug))
 		else:
 			self.template('newpost.html', error="Subject and Content please.", subject=subject, content=content)
 
 class Permalink(TemplateHandler):
-	def get(self, post_id): # pass in slug instead
-		key = ndb.Key('Post', int(post_id), parent=blog_key())
-		post = key.get()
+	def get(self, slug):
+		post = Post.query(Post.slug == slug).get()
 
-		if not post:
-			self.error(404)
-			return
-
-		self.template('permalink.html', post=post)
-
-# --- BOARD HANDLERS ---
-class Board(TemplateHandler):
-	def get(self):
-		self.template('board.html')
+		if post:
+			self.template('permalink.html', post=post)
+		else:
+			self.redirect('/')
 
 # --- ROUTING ---
 application = webapp2.WSGIApplication([
-	('/', Frontpage),
 	('/signup', Signup),
-	('/userhome', UserHome),
+	('/user/([a-zA-Z]+)', UserHome),
 	('/login', Login),
 	('/logout', Logout),
-	('/blog/?', Blog),
-	('/blog/newpost', NewPost),
-	('/blog/([0-9]+)', Permalink),
-	('/board', Board),
+	('/?', Blog), # ? is regex for 0 or 1
+	('/newpost', NewPost),
+	('/post/([\S]+)', Permalink),
 ], debug=True)

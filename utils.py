@@ -1,14 +1,13 @@
+from webapp2 import RequestHandler
+
 import hashlib
 import hmac
 import re
 import random
 import string
-from time import sleep
-import logging
 
-SECRET = 'xJjNGWl69hJRp8Pv7eq5l2F0Jh5e'
+import SECRET
 
-from webapp2 import RequestHandler
 
 # --- REQUESTHANDLER DEPENDENCIES ---
 # note that these can be called as self.func() from any Requesthandler
@@ -25,7 +24,7 @@ class MainHandler(RequestHandler):
 
 # --- COOKIE ---
 def hash_str(s):
-	return hmac.new(SECRET, s).hexdigest()
+	return hmac.new(SECRET.SECRET, s).hexdigest()
 
 def make_secure_val(s): # takes the data to be stored in the cookie and returns it with it's salted HMAC
 	return "%s|%s" % (s, hash_str(s))
@@ -74,6 +73,7 @@ def validation(username, password, verify, email): # needs to take **kw, but can
 
 
 
+r"^([\w]?-?[/w]?)$"
 
 
 

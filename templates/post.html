@@ -2,7 +2,7 @@
 <div class="post">
 	<div class="post-heading">
 		<div class="post-title">
-			{{ p.subject }} 
+			<a href="/post/{{ p.slug }}">{{ p.subject }}</a>
 		</div>
 		<div class="post-date">
 			{{ p.created.strftime("%b %d, %Y") }}
@@ -11,4 +11,5 @@
 	<div class="post-content">
 		{{ p.content }}
 	</div>
+	<hr>
 </div>
